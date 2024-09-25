@@ -3,25 +3,21 @@ from telebot import types
 from menu import menu
 import sqlite3
 
-API_TOKEN = '7817351008:AAGKEjuJzEFM4WtvSgc8Hieopvkz108uijw'
+API_TOKEN = '7817351008:AAGKEjuJzEFM4WtvSgc8Hieopvkz108uijw'   # Replace with your actual token
 bot = telebot.TeleBot(API_TOKEN)
 
+con = sqlite3.connect('users.db', check_same_thread=False)
+cur = con.cursor()
 
-connect = sqlite3.connect('users.db')
-cur = connect.cursor()
-
-# cur.execute('''
-# CREATE TABLE IF NOT EXISTS Users (
-# id INTEGER PRIMARY KEY,
-# userid INTEGER NOT NULL,
-# tg_username TEXT NOT NULL,
-# username TEXT NOT NULL,
-# org_adress TEXT NOT NULL,
-# )
-# ''')
-
-connect.commit()
-
+cur.execute('''
+CREATE TABLE IF NOT EXISTS Users (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE,
+    username TEXT NOT NULL,
+    org_adress TEXT NOT NULL
+)
+''')
+con.commit()
 
 @bot.message_handler(commands=["start"])
 def send_menu(message):
@@ -29,12 +25,12 @@ def send_menu(message):
     assorti_btn = types.KeyboardButton("/Ассортимент")
     zakaz_btn = types.KeyboardButton("/Заказать")
     pod_markup.add(assorti_btn, zakaz_btn)
+    
     bot.send_message(
         message.chat.id,
         "Хош кушац? Заказывай \n (Кнопка Ассортимент)",
         reply_markup=pod_markup
-        )
-
+    )
 
 @bot.message_handler(commands=['Ассортимент'])
 def assortiment(message):
@@ -44,74 +40,109 @@ def assortiment(message):
     msg_markup.add(minus_btn, plus_btn)
 
     for i in range(0, len(menu)):
-        text = f"{menu[i]['name']}\n Цена {menu[i]['cost']}\n Кол-во: 0"
-        photo = open(menu[i]["img"], 'rb')
-
-        bot.send_photo(
-            message.chat.id,
-            photo, caption=text,
-            reply_markup=msg_markup
+        text = f"{menu[i]['name']}\nЦена: {menu[i]['cost']}\nКол-во: 0"
+        with open(menu[i]["img"], 'rb') as photo:
+            bot.send_photo(
+                message.chat.id,
+                photo,
+                caption=text,
+                reply_markup=msg_markup
             )
-
 
 @bot.message_handler(commands=['Заказать'])
 def zakaz(message):
-    bot.send_message(
-        message.chat.id,
-        'Для заказа пожалуйста введите своё имя'
-        )
-    bot.register_next_step_handler(
-         message,
-         save_username
-         )
-    print(message.text)
+    cur.execute('SELECT * FROM Users WHERE user_id=?', (message.from_user.id,))
+    rows = cur.fetchall()
 
+    if not rows:
+        bot.send_message(
+            message.chat.id,
+            'Для заказа введите своё имя'
+        )
+        bot.register_next_step_handler(message, save_username)
+    else:
+        display_user_data(message, rows[0])
 
 def save_username(message):
-    bot.send_message(
-        message.chat.id,
-        'Отлично. Теперь адрес'
-        )
-    print(message.text)
+    global username
+    username = message.text
+    bot.send_message(message.chat.id, 'Теперь введите свой адрес:')
     bot.register_next_step_handler(message, save_adress)
 
-
 def save_adress(message):
+    global org_adress
+    org_adress = message.text
+    confirm_markup = types.InlineKeyboardMarkup()
+    yes_btn = types.InlineKeyboardButton(text="Да", callback_data="save")
+    change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
+    confirm_markup.add(yes_btn, change_btn)
+
     bot.send_message(
         message.chat.id,
-        'Хорошо.'
-        )
-    print(message.text)
+        f'Подтвердите ваши данные:\nИмя: {username}\nАдрес: {org_adress}',
+        reply_markup=confirm_markup
+    )
 
+@bot.callback_query_handler(func=lambda call: call.data in ["save", "edit"])
+def handle_confirmation(callback):
+    if callback.data == "save":
+        cur.execute('INSERT OR REPLACE INTO Users (user_id, username, org_adress) VALUES (?, ?, ?)',
+                    (callback.from_user.id, username, org_adress))
+        con.commit()
+        bot.send_message(callback.message.chat.id, "Ваши данные успешно сохранены.")
+        bot.delete_message(callback.message.chat.id, callback.message.message_id)
+
+    elif callback.data == "edit":
+        bot.delete_message(callback.message.chat.id, callback.message.message_id)
+        bot.send_message(callback.message.chat.id, 'Введите новое имя:')
+        bot.register_next_step_handler(callback.message, update_username)
+
+def update_username(message):
+    global username
+    username = message.text
+    bot.send_message(message.chat.id, 'Теперь введите новый адрес:')
+    bot.register_next_step_handler(message, update_adress)
+
+def update_adress(message):
+    global org_adress
+    org_adress = message.text
+    cur.execute('UPDATE Users SET username=?, org_adress=? WHERE user_id=?',
+                (username, org_adress, message.from_user.id))
+    con.commit()
+    bot.send_message(message.chat.id, "Ваши данные успешно обновлены.")
+
+def display_user_data(message, user_data):
+    msg_markup = types.InlineKeyboardMarkup()
+    change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
+    msg_markup.add(change_btn)
+
+    bot.send_message(
+        message.chat.id,
+        f'Ваши данные:\nИмя: {user_data[2]}\nАдрес: {user_data[3]}',
+        reply_markup=msg_markup
+    )
 
 @bot.callback_query_handler(func=lambda call: True)
 def edit_ass(callback):
     text = callback.message.caption
-    edit_text = text
-    if callback.data == "plus" and int(text[-1]) >= 0:
-        edit_text = text[:-1] + str(int(text[-1])+1)
-    elif callback.data == "minus" and int(text[-1]) > 0:
-        edit_text = text[:-1] + str(int(text[-1])-1)
-    else:
-        bot.answer_callback_query(
-            callback_query_id=callback.id,
-            text="Нельзя заказать меньше 0"
-            )
+    quantity = int(text.split(':')[-1].strip()) 
+    edit_text = text[:-1] + str(quantity + 1) if callback.data == "plus" and quantity >= 0 else \
+                text[:-1] + str(quantity - 1) if callback.data == "minus" and quantity > 0 else text
+    
+    if edit_text == text:
+        bot.answer_callback_query(callback.id, text="Нельзя заказать меньше 0")
+        return
 
-    msg_text = edit_text
-    id(callback.id)
     msg_markup = types.InlineKeyboardMarkup()
     plus_btn = types.InlineKeyboardButton(text="+", callback_data="plus")
     minus_btn = types.InlineKeyboardButton(text="-", callback_data="minus")
     msg_markup.add(minus_btn, plus_btn)
 
-    print(callback.data)
     bot.edit_message_caption(
         chat_id=callback.message.chat.id,
         message_id=callback.message.message_id,
-        caption=msg_text,
+        caption=edit_text,
         reply_markup=msg_markup
-        )
-
+    )
 
 bot.infinity_polling()
