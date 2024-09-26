@@ -23,8 +23,10 @@ con.commit()
 def send_menu(message):
     pod_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     assorti_btn = types.KeyboardButton("/Ассортимент")
-    zakaz_btn = types.KeyboardButton("/Заказать")
-    pod_markup.add(assorti_btn, zakaz_btn)
+    adress_btn = types.KeyboardButton("/Адрес Доставки")
+    zakaz_btn = types.KeyboardButton("/Оформить заказ")
+    pod_markup.add(assorti_btn, adress_btn)
+    pod_markup.add(zakaz_btn)
     
     bot.send_message(
         message.chat.id,
@@ -49,8 +51,8 @@ def assortiment(message):
                 reply_markup=msg_markup
             )
 
-@bot.message_handler(commands=['Заказать'])
-def zakaz(message):
+@bot.message_handler(commands=['Адрес Доставки'])
+def adress(message):
     cur.execute('SELECT * FROM Users WHERE user_id=?', (message.from_user.id,))
     rows = cur.fetchall()
 
@@ -121,13 +123,31 @@ def display_user_data(message, user_data):
         f'Ваши данные:\nИмя: {user_data[2]}\nАдрес: {user_data[3]}',
         reply_markup=msg_markup
     )
-
+zakaz = []
 @bot.callback_query_handler(func=lambda call: True)
 def edit_ass(callback):
+    tovar_name = callback.message.caption[:int(callback.message.caption.index("\n"))]
     text = callback.message.caption
-    quantity = int(text.split(':')[-1].strip()) 
-    edit_text = text[:-1] + str(quantity + 1) if callback.data == "plus" and quantity >= 0 else \
-                text[:-1] + str(quantity - 1) if callback.data == "minus" and quantity > 0 else text
+    quantity = int(text.split(':')[-1].strip())
+    if callback.data == "plus" and quantity >= 0:
+        edit_text = text[:-1] + str(quantity + 1)
+        if tovar_name not in zakaz:
+            zakaz.append(tovar_name)
+            for i in range(0, len(menu)):
+                if menu[i]["name"] == tovar_name:
+                    cost=menu[i]["cost"]
+                    zakaz.append(cost)
+                    print(zakaz)
+        elif tovar_name in zakaz:
+            
+            for i in zakaz: # СДЕЛАТЬ НОРМАЛЬНОЕ ДОБАВЛЕНИЕ ТОВАРА В ЗАКАЗ
+                if i == tovar_name:
+                    
+        print(tovar_name)
+    if callback.data == "minus" and quantity > 0:
+        edit_text = text[:-1] + str(quantity - 1)
+    else:
+        text
     
     if edit_text == text:
         bot.answer_callback_query(callback.id, text="Нельзя заказать меньше 0")
