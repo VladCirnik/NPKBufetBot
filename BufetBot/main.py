@@ -3,7 +3,8 @@ from telebot import types
 from menu import menu
 import sqlite3
 
-API_TOKEN = '7817351008:AAGKEjuJzEFM4WtvSgc8Hieopvkz108uijw'   # Replace with your actual token
+POVAR_CHAT_ID = -1002418156311
+API_TOKEN = '7817351008:AAGKEjuJzEFM4WtvSgc8Hieopvkz108uijw'
 bot = telebot.TeleBot(API_TOKEN)
 
 con = sqlite3.connect('users.db', check_same_thread=False)
@@ -33,6 +34,7 @@ def send_menu(message):
         "Хош кушац? Заказывай \n (Кнопка Ассортимент)",
         reply_markup=pod_markup
     )
+    print(message.chat.id)
 
 @bot.message_handler(commands=['Ассортимент'])
 def assortiment(message):
@@ -51,7 +53,7 @@ def assortiment(message):
                 reply_markup=msg_markup
             )
 
-@bot.message_handler(commands=['Адрес Доставки'])
+@bot.message_handler(commands=['Адрес'])
 def adress(message):
     cur.execute('SELECT * FROM Users WHERE user_id=?', (message.from_user.id,))
     rows = cur.fetchall()
@@ -126,43 +128,87 @@ def display_user_data(message, user_data):
 zakaz = []
 @bot.callback_query_handler(func=lambda call: True)
 def edit_ass(callback):
-    tovar_name = callback.message.caption[:int(callback.message.caption.index("\n"))]
-    text = callback.message.caption
-    quantity = int(text.split(':')[-1].strip())
-    if callback.data == "plus" and quantity >= 0:
-        edit_text = text[:-1] + str(quantity + 1)
-        if tovar_name not in zakaz:
-            zakaz.append(tovar_name)
-            for i in range(0, len(menu)):
-                if menu[i]["name"] == tovar_name:
-                    cost=menu[i]["cost"]
-                    zakaz.append(cost)
+    if callback.data == "zakaz_done":
+        cur.execute(f'SELECT * FROM Users WHERE user_id={callback.from_user.id}')
+        rows = cur.fetchall()
+        zakaz_to_chat = ""
+        print(rows)
+        zakaz_to_chat += f"Новый Заказ\n{display_zakaz()}\n\nАдрес: {rows[0][3]}\nИмя: {rows[0][2]}"
+        bot.send_message(POVAR_CHAT_ID, zakaz_to_chat)
+
+    elif callback.data in ["plus", "minus"]:
+        tovar_name = callback.message.caption[:int(callback.message.caption.index("\n"))]
+        text = callback.message.caption
+        quantity = int(text.split(':')[-1].strip())
+        if callback.data == "plus" and quantity >= 0:
+            edit_text = text[:-1] + str(quantity + 1)
+            if tovar_name not in zakaz:
+                zakaz.append(tovar_name)
+                zakaz.append(1)
+                for i in range(0, len(menu)):
+                    if menu[i]["name"] == tovar_name:
+                        cost = menu[i]["cost"]
+                        zakaz.append(cost)
+            elif tovar_name in zakaz:
+                for i in range(0, len(zakaz)):
+                    if zakaz[i] == tovar_name:
+                        zakaz[i+1] += 1
+            print(zakaz)
+        if callback.data == "minus" and quantity > 0:
+            edit_text = text[:-1] + str(quantity - 1)
+            for i in range(0, len(zakaz)):
+                try:
+                    if zakaz[i] == tovar_name:
+                        zakaz[i+1] -= 1
+                        if zakaz[i+1] == 0:
+                            for j in range(0, 3):
+                                del zakaz[i]
+                except IndexError:
+                    print("какой-то непонятный index error")
                     print(zakaz)
-        elif tovar_name in zakaz:
-            
-            for i in zakaz: # СДЕЛАТЬ НОРМАЛЬНОЕ ДОБАВЛЕНИЕ ТОВАРА В ЗАКАЗ
-                if i == tovar_name:
-                    
-        print(tovar_name)
-    if callback.data == "minus" and quantity > 0:
-        edit_text = text[:-1] + str(quantity - 1)
-    else:
-        text
+                print(zakaz)
+        else:
+            text
+        
+        if edit_text == text:
+            bot.answer_callback_query(callback.id, text="Нельзя заказать меньше 0")
+            return
+
+        msg_markup = types.InlineKeyboardMarkup()
+        plus_btn = types.InlineKeyboardButton(text="+", callback_data="plus")
+        minus_btn = types.InlineKeyboardButton(text="-", callback_data="minus")
+        msg_markup.add(minus_btn, plus_btn)
+
+        bot.edit_message_caption(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            caption=edit_text,
+            reply_markup=msg_markup
+        )
     
-    if edit_text == text:
-        bot.answer_callback_query(callback.id, text="Нельзя заказать меньше 0")
-        return
+        
 
+@bot.message_handler(commands=["Оформить"])
+def get_zakaz(message):
     msg_markup = types.InlineKeyboardMarkup()
-    plus_btn = types.InlineKeyboardButton(text="+", callback_data="plus")
-    minus_btn = types.InlineKeyboardButton(text="-", callback_data="minus")
-    msg_markup.add(minus_btn, plus_btn)
+    zakaz_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
+    msg_markup.add(zakaz_btn)
+    if zakaz != []:
+        bot.send_message(message.chat.id, f"Ваш заказ \n\n{display_zakaz()}", reply_markup=msg_markup)
+    else:
+        bot.send_message(message.id, "Вы должны заказать хоть что-то")
+def display_zakaz():
+    out = ""
+    sum = 0
+    for i in range(0, len(zakaz)):
+        if type(zakaz[i]) == str:
+            out += f"{zakaz[i+1]} - {zakaz[i]} \n"
+            sum += zakaz[i+2] * zakaz[i+1]
+    out += "Сумма: " + str(sum)
 
-    bot.edit_message_caption(
-        chat_id=callback.message.chat.id,
-        message_id=callback.message.message_id,
-        caption=edit_text,
-        reply_markup=msg_markup
-    )
+    return out
 
+# @bot.callback_query_handler(func=lambda call: True)
+# def to_povar(callback):
+    
 bot.infinity_polling()
