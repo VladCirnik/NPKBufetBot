@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS Users (
 ''')
 con.commit()
 
+user_states = {}
 user_orders = {}
 
 @bot.message_handler(commands=["start"])
@@ -40,7 +41,6 @@ async def send_menu(message):
     )
     print(message.chat.id)
 
-
 @bot.message_handler(commands=['Ассортимент'])
 async def assortiment(message):
     msg_markup = types.InlineKeyboardMarkup()
@@ -57,7 +57,6 @@ async def assortiment(message):
                 caption=text,
                 reply_markup=msg_markup
             )
-
 @bot.message_handler(commands=['Адрес'])
 async def adress(message):
     cur.execute('SELECT * FROM Users WHERE user_id=?', (message.from_user.id,))
@@ -68,26 +67,22 @@ async def adress(message):
             message.chat.id,
             'Для заказа введите своё имя'
         )
-        await bot.register_next_step_handler(
-            message,
-            save_username
-            )
+        user_states[message.from_user.id] = 'waiting_for_name'
     else:
         await display_user_data(message, rows[0])
 
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_name')
 async def save_username(message):
     global username
     username = message.text
+    user_states[message.from_user.id] = 'waiting_for_address'
     await bot.send_message(
         message.chat.id,
         'Теперь введите свой адрес:'
-        )
-    await bot.register_next_step_handler(
-        message,
-        save_adress
-        )
+    )
 
-async def save_adress(message):
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_address')
+async def save_address(message):
     global org_adress
     org_adress = message.text
     confirm_markup = types.InlineKeyboardMarkup()
@@ -110,40 +105,36 @@ async def handle_confirmation(callback):
         await bot.send_message(
             callback.message.chat.id,
             "Ваши данные успешно сохранены."
-            )
+        )
         await bot.delete_message(
             callback.message.chat.id,
             callback.message.message_id
-            )
+        )
+        user_states.pop(callback.from_user.id, None)
 
     elif callback.data == "edit":
         await bot.delete_message(
             callback.message.chat.id,
             callback.message.message_id
-            )
+        )
         await bot.send_message(
             callback.message.chat.id,
             'Введите новое имя:'
-            )
-        await bot.register_next_step_handler(
-            callback.message,
-            update_username
-            )
+        )
+        user_states[callback.from_user.id] = 'waiting_for_new_name'
 
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_new_name')
 async def update_username(message):
     global username
     username = message.text
     await bot.send_message(
         message.chat.id,
         'Теперь введите новый адрес:'
-        )
-    await bot.register_next_step_handler(
-        message,
-        update_adress
-        )
+    )
+    user_states[message.from_user.id] = 'waiting_for_new_address'
 
-async def update_adress(message):
-    global org_adress
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_new_address')
+async def update_address(message):
     org_adress = message.text
     cur.execute('UPDATE Users SET username=?, org_adress=? WHERE user_id=?',
                 (username, org_adress, message.from_user.id))
@@ -151,7 +142,8 @@ async def update_adress(message):
     await bot.send_message(
         message.chat.id,
         "Ваши данные успешно обновлены."
-        )
+    )
+    user_states.pop(message.from_user.id, None)
 
 async def display_user_data(message, user_data):
     msg_markup = types.InlineKeyboardMarkup()
@@ -271,7 +263,7 @@ async def get_zakaz(message):
     if message.from_user.id in user_orders:
         await bot.send_message(
             message.chat.id,
-            f"Ваш заказ \n\n{await display_zakaz(message.from_user.id)}",
+            f"Ваш заказ \n\n{await display_zakaz(id=message.from_user.id)}",
             reply_markup=msg_markup
             )
     else:
