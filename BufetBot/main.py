@@ -65,7 +65,7 @@ async def adress(message):
     if not rows:
         await bot.send_message(
             message.chat.id,
-            'Для заказа введите своё имя'
+            'Для заказа введите своё имя:'
         )
         user_states[message.from_user.id] = 'waiting_for_name'
     else:
@@ -87,8 +87,8 @@ async def save_address(message):
     org_adress = message.text
     confirm_markup = types.InlineKeyboardMarkup()
     yes_btn = types.InlineKeyboardButton(text="Да", callback_data="save")
-    change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
-    confirm_markup.add(yes_btn, change_btn)
+    # change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
+    confirm_markup.add(yes_btn)
 
     await bot.send_message(
         message.chat.id,
@@ -164,8 +164,14 @@ async def handle_callback(callback: types.CallbackQuery):
         rows = cur.fetchall()
         zakaz_to_chat = ""
         print(rows)
-        zakaz_to_chat += f"Новый Заказ\n{await display_zakaz()}\n\nАдрес: {rows[0][3]}\nИмя: {rows[0][2]}"
-        await bot.send_message(-1002418156311, zakaz_to_chat)
+        zakaz_to_chat += f"Новый Заказ\n{await display_zakaz(callback.from_user.id)}\n\nАдрес: {rows[0][3]}\nИмя: {rows[0][2]}"
+        await bot.send_message(POVAR_CHAT_ID, zakaz_to_chat)
+        print(callback)
+        await bot.delete_message(
+            callback.message.chat.id,
+            callback.message.id
+            )
+        
         del user_orders[callback.from_user.id]
         print(user_orders)
         
@@ -257,21 +263,29 @@ async def handle_callback(callback: types.CallbackQuery):
 
 @bot.message_handler(commands=["Оформить"])
 async def get_zakaz(message):
-    msg_markup = types.InlineKeyboardMarkup()
-    zakaz_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
-    msg_markup.add(zakaz_btn)
-    if message.from_user.id in user_orders:
-        await bot.send_message(
-            message.chat.id,
-            f"Ваш заказ \n\n{await display_zakaz(id=message.from_user.id)}",
-            reply_markup=msg_markup
-            )
+    cur.execute(f'SELECT * FROM Users WHERE user_id={message.from_user.id}')
+    rows = cur.fetchall()
+    if rows != []:
+        msg_markup = types.InlineKeyboardMarkup()
+        zakaz_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
+        msg_markup.add(zakaz_btn)
+        if message.from_user.id in user_orders:
+            print(message)
+            await bot.send_message(
+                message.chat.id,
+                f"Ваш заказ \n\n{await display_zakaz(message.from_user.id)}",
+                reply_markup=msg_markup
+                )
+        else:
+            await bot.send_message(
+                message.chat.id,
+                "Вы должны заказать хоть что-то"
+                )
     else:
         await bot.send_message(
             message.chat.id,
-            "Вы должны заказать хоть что-то"
-            )
-
+            "Для заказа необходимо ввести адрес"
+        )
 
 async def display_zakaz(id):
     zakaz = user_orders[id]
