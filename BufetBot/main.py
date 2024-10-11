@@ -34,7 +34,6 @@ async def send_menu(message):
     await bot.send_message(
         message.chat.id,
         "Хош кушац? Заказывай \n (Кнопка Ассортимент)",
-        reply_markup=button.keyboard_buttons
     )
     print(message.chat.id)
 
@@ -48,7 +47,6 @@ async def assortiment(message):  # отправление всего меню и
                 message.chat.id,
                 photo,
                 caption=Menu_assortment,
-                reply_markup=button.message_markup_assortment
             )
 
 @bot.message_handler(commands=['Адрес'])
@@ -64,12 +62,6 @@ async def adress(message): # выводит адрес доставки по к�
         user_states[message.from_user.id] = 'waiting_for_name'
     else:
         await display_user_data(message, rows[0])  # если user_id есть то выводит имеющийся адрес
-
-
-
-                        # ------------------------- сохранение Адреса и Имени в бд --------------------------
-
-
 
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_name')
 async def save_username(message):  # сохранение имени заказчика в бд
@@ -146,10 +138,10 @@ async def update_address(message): # ввести новый адрес
 
 async def display_user_data(message, user_data): # вывод имени и адреса 
 
+
     await bot.send_message(            # формирование сообщения
         message.chat.id,
         f'Ваши данные:\nИмя: {user_data[2]}\nАдрес: {user_data[3]}',
-        reply_markup=button.message_markup
     )
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -275,8 +267,6 @@ async def get_zakaz(message):
             message.chat.id,
             "Для заказа необходимо ввести адрес"
         )
-
-
 
 async def display_zakaz(id):   # красивый вывод всего заказа в сообщение
     order = user_orders[id]
