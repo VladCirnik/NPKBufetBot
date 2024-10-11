@@ -90,7 +90,6 @@ async def save_address(message): # сохранение адреса заказ�
     org_adress = message.text
     confirm_markup = types.InlineKeyboardMarkup()
     yes_btn = types.InlineKeyboardButton(text="Да", callback_data="save")
-    # change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
     confirm_markup.add(yes_btn)
 
     await bot.send_message(
@@ -152,26 +151,26 @@ async def update_address(message): # ввести новый адрес
     user_states.pop(message.from_user.id, None)
 
 async def display_user_data(message, user_data): # вывод имени и адреса 
-    msg_markup = types.InlineKeyboardMarkup()
+    message_markup = types.InlineKeyboardMarkup()
     change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
-    msg_markup.add(change_btn)
+    message_markup.add(change_btn)
 
     await bot.send_message(            # формирование сообщения
         message.chat.id,
         f'Ваши данные:\nИмя: {user_data[2]}\nАдрес: {user_data[3]}',
-        reply_markup=msg_markup
+        reply_markup=message_markup
     )
 
 @bot.callback_query_handler(func=lambda call: True)
 async def handle_callback(callback: types.CallbackQuery):
-    zakaz = []
-    if callback.data == "zakaz_done":        # при нажатии /Оформить заказ
+    order = []
+    if callback.data == "order_done":        # при нажатии /Оформить заказ
         cur.execute(f'SELECT * FROM Users WHERE user_id={callback.from_user.id}') # запрос в бд для адреса и имени по user_id
         rows = cur.fetchall()
-        zakaz_to_chat = ""   # фомирование сообщения заказа
+        order_to_chat = ""   # фомирование сообщения заказа
         print(rows)
-        zakaz_to_chat += f"Новый Заказ\n{await display_zakaz(callback.from_user.id)}\n\nАдрес: {rows[0][3]}\nИмя: {rows[0][2]}"
-        await bot.send_message(POVAR_CHAT_ID, zakaz_to_chat)        # отправление в поварской чат заказа
+        order_to_chat += f"Новый Заказ\n{await display_zakaz(callback.from_user.id)}\n\nАдрес: {rows[0][3]}\nИмя: {rows[0][2]}"
+        await bot.send_message(POVAR_CHAT_ID, order_to_chat)        # отправление в поварской чат заказа
         print(callback)
         await bot.delete_message(
             callback.message.chat.id,
@@ -182,43 +181,43 @@ async def handle_callback(callback: types.CallbackQuery):
         print(user_orders)
         
     elif callback.data in ["plus", "minus"]:        # При нажатии плюс или минус в сообщения меняет кол-во определенной позиции
-        tovar_name = callback.message.caption[:int(callback.message.caption.index("\n"))]
+        product_name = callback.message.caption[:int(callback.message.caption.index("\n"))]
         text = callback.message.caption
-        pattern = r'Кол-во:\s*(\d+)'    # берет сообщения и определяет имеющееся кол-во
-        match = re.search(pattern, text)
+        quantity_product = r'Кол-во:\s*(\d+)'    # берет сообщения и определяет имеющееся кол-во
+        match = re.search(quantity_product, text)
         for item in range(len(menu)):
-            if menu[item]["name"] == tovar_name:    # ищет название товара в menu.py
+            if menu[item]["name"] == product_name:    # ищет название товара в menu.py
                 cost = menu[item]["cost"] # берет цену из menu.py
         if match:
             quantity = int(match.group(1))
 
             if callback.data == "plus" and quantity >= 0:    # если нажата кнопка плюс, то изменяет сообщения в котором кол-во будет на 1 больше 
                 quantity += 1
-                edit_text = f"{tovar_name}\nЦена: {cost}\nКол-во: {quantity}"
-                if tovar_name not in zakaz:   # если названия товара нет в текущем заказе, то добавляет его
-                    zakaz.append(tovar_name)
-                    zakaz.append(1)
+                edit_text = f"{product_name}\nЦена: {cost}\nКол-во: {quantity}"
+                if product_name not in order:   # если названия товара нет в текущем заказе, то добавляет его
+                    order.append(product_name)
+                    order.append(1)
                     for item in range(len(menu)):
-                        if menu[item]["name"] == tovar_name:
-                            zakaz.append(cost) 
+                        if menu[item]["name"] == product_name:
+                            order.append(cost) 
                             break
                 else:      # если название есть, то просто меняет кол-во
-                    for i in range(0, len(zakaz)):
-                        if zakaz[i] == tovar_name:
-                            zakaz[i + 1] += 1
+                    for i in range(0, len(order)):
+                        if order[i] == product_name:
+                            order[i + 1] += 1
                             break
 
-                print(zakaz) 
+                print(order) 
 
             elif callback.data == "minus" and quantity > 0: # тоже, что и выше, только с минусом
                 quantity -= 1
-                edit_text = f"{tovar_name}\nЦена: {cost}\nКол-во: {quantity}" 
+                edit_text = f"{product_name}\nЦена: {cost}\nКол-во: {quantity}" 
 
-                for i in range(len(zakaz)):
-                    if zakaz[i] == tovar_name:
-                        zakaz[i + 1] -= 1     
-                        if zakaz[i + 1] == 0:   # если кол-ва в заказе настает 0, то удаляет из текущего заказа совсем
-                            del zakaz[i:i + 3]
+                for i in range(len(order)):
+                    if order[i] == product_name:
+                        order[i + 1] -= 1     
+                        if order[i + 1] == 0:   # если кол-ва в заказе настает 0, то удаляет из текущего заказа совсем
+                            del order[i:i + 3]
                         break
         else:
             text
@@ -230,27 +229,27 @@ async def handle_callback(callback: types.CallbackQuery):
                 )
             return
         if callback.from_user.id not in user_orders:
-            user_orders[callback.from_user.id] = zakaz
+            user_orders[callback.from_user.id] = order
         elif callback.from_user.id in user_orders:
             for item in range(len(menu)):
-                if menu[item]["name"] == tovar_name:
+                if menu[item]["name"] == product_name:
                     cost = menu[item]["cost"]
             if match:
                 quantity = int(match.group(1))
 
                 if callback.data == "plus" and quantity >= 0:   # разделение zakaz для каждого пользователя свой, без этих строк у всех пользователей только один заказ 
                     quantity += 1
-                    edit_text = f"{tovar_name}\nЦена: {cost}\nКол-во: {quantity}"
-                    if tovar_name not in user_orders[callback.from_user.id]:
-                        user_orders[callback.from_user.id].append(tovar_name)
+                    edit_text = f"{product_name}\nЦена: {cost}\nКол-во: {quantity}"
+                    if product_name not in user_orders[callback.from_user.id]:
+                        user_orders[callback.from_user.id].append(product_name)
                         user_orders[callback.from_user.id].append(1)
                         for item in range(len(menu)):
-                            if menu[item]["name"] == tovar_name:
+                            if menu[item]["name"] == product_name:
                                 user_orders[callback.from_user.id].append(cost) 
                                 break
                     else:
                         for i in range(0, len(user_orders[callback.from_user.id])):
-                            if user_orders[callback.from_user.id][i] == tovar_name:
+                            if user_orders[callback.from_user.id][i] == product_name:
                                 user_orders[callback.from_user.id][i + 1] += 1
                                 break
         print(user_orders)
@@ -273,8 +272,8 @@ async def get_zakaz(message):
     rows = cur.fetchall()
     if rows != []:
         msg_markup = types.InlineKeyboardMarkup()
-        zakaz_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
-        msg_markup.add(zakaz_btn)
+        order_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
+        msg_markup.add(order_btn)
         if message.from_user.id in user_orders:    # если человек нажимал что заказать, то сообщение что он заказал
             print(message)
             await bot.send_message(   
@@ -294,13 +293,13 @@ async def get_zakaz(message):
         )
 
 async def display_zakaz(id):   # красивый вывод всего заказа в сообщение
-    zakaz = user_orders[id]
+    order = user_orders[id]
     out = ""  # сам заказ весь
     sum = 0
-    for i in range(0, len(zakaz)):
-        if type(zakaz[i]) == str:
-            out += f"{zakaz[i+1]} - {zakaz[i]} \n"
-            sum += zakaz[i+2] * zakaz[i+1]
+    for i in range(0, len(order)):
+        if type(order[i]) == str:
+            out += f"{order[i+1]} - {order[i]} \n"
+            sum += order[i+2] * order[i+1]
     out += "Сумма: " + str(sum)
 
     return out
