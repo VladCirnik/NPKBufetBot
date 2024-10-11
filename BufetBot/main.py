@@ -4,6 +4,7 @@ from telebot import types
 from menu import menu
 import sqlite3
 import re
+import button
 
 POVAR_CHAT_ID = -1002418156311
 API_TOKEN = '7817351008:AAGKEjuJzEFM4WtvSgc8Hieopvkz108uijw'
@@ -29,26 +30,15 @@ user_orders = {}
                         # Приветствие и добавление всех кнопок в клаву
 @bot.message_handler(commands=["start"])
 async def send_menu(message): 
-    keyboard_buttons = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    assortment_button = types.KeyboardButton("/Ассортимент")
-    adress_button = types.KeyboardButton("/Адрес Доставки")
-    order_button = types.KeyboardButton("/Оформить заказ")
-    keyboard_buttons.add(assortment_button, adress_button)
-    keyboard_buttons.add(order_button)
 
     await bot.send_message(
         message.chat.id,
         "Хош кушац? Заказывай \n (Кнопка Ассортимент)",
-        reply_markup=keyboard_buttons
     )
     print(message.chat.id)
 
 @bot.message_handler(commands=['Ассортимент'])
 async def assortiment(message):  # отправление всего меню из menu.py
-    message_markup_assortment = types.InlineKeyboardMarkup() # кнопки В СООБЩЕНИЕ минус/плюс для кол-ва позиции 
-    plus_button = types.InlineKeyboardButton(text="+", callback_data="plus")
-    minus_button = types.InlineKeyboardButton(text="-", callback_data="minus")
-    message_markup_assortment.add(minus_button, plus_button)
 
     for i in range(0, len(menu)): # формирование меню
         Menu_assortment = f"{menu[i]['name']}\nЦена: {menu[i]['cost']}\nКол-во: 0"
@@ -57,8 +47,8 @@ async def assortiment(message):  # отправление всего меню и
                 message.chat.id,
                 photo,
                 caption=Menu_assortment,
-                reply_markup=message_markup_assortment
             )
+
 @bot.message_handler(commands=['Адрес'])
 async def adress(message): # выводит адрес доставки по кнопке
     cur.execute('SELECT * FROM Users WHERE user_id=?', (message.from_user.id,))
@@ -73,7 +63,6 @@ async def adress(message): # выводит адрес доставки по к�
     else:
         await display_user_data(message, rows[0])  # если user_id есть то выводит имеющийся адрес
 
-                        # ------------------------- сохранение Адреса и Имени в бд --------------------------
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id] == 'waiting_for_name')
 async def save_username(message):  # сохранение имени заказчика в бд
     global username
@@ -88,14 +77,11 @@ async def save_username(message):  # сохранение имени заказ�
 async def save_address(message): # сохранение адреса заказчика в бд
     global org_adress
     org_adress = message.text
-    confirm_markup = types.InlineKeyboardMarkup()
-    yes_btn = types.InlineKeyboardButton(text="Да", callback_data="save")
-    confirm_markup.add(yes_btn)
 
     await bot.send_message(
         message.chat.id,
         f'Подтвердите ваши данные:\nИмя: {username}\nАдрес: {org_adress}',
-        reply_markup=confirm_markup
+        reply_markup=button.confirm_markup
     )
 
 @bot.callback_query_handler(func=lambda call: call.data in ["save", "edit"])
@@ -151,14 +137,11 @@ async def update_address(message): # ввести новый адрес
     user_states.pop(message.from_user.id, None)
 
 async def display_user_data(message, user_data): # вывод имени и адреса 
-    message_markup = types.InlineKeyboardMarkup()
-    change_btn = types.InlineKeyboardButton(text="Изменить", callback_data="edit")
-    message_markup.add(change_btn)
+
 
     await bot.send_message(            # формирование сообщения
         message.chat.id,
         f'Ваши данные:\nИмя: {user_data[2]}\nАдрес: {user_data[3]}',
-        reply_markup=message_markup
     )
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -253,16 +236,12 @@ async def handle_callback(callback: types.CallbackQuery):
                                 user_orders[callback.from_user.id][i + 1] += 1
                                 break
         print(user_orders)
-        msg_markup = types.InlineKeyboardMarkup()
-        plus_btn = types.InlineKeyboardButton(text="+", callback_data="plus")
-        minus_btn = types.InlineKeyboardButton(text="-", callback_data="minus")
-        msg_markup.add(minus_btn, plus_btn)
 
         await bot.edit_message_caption(       # изменение сообщения в ассортименте, для того чтобы менять "Кол-во: "
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id,
             caption=edit_text,
-            reply_markup=msg_markup
+            reply_markup=button.msg_markup
         )
 
 
@@ -271,15 +250,12 @@ async def get_zakaz(message):
     cur.execute(f'SELECT * FROM Users WHERE user_id={message.from_user.id}')
     rows = cur.fetchall()
     if rows != []:
-        msg_markup = types.InlineKeyboardMarkup()
-        order_btn = types.InlineKeyboardButton(text="Все верно", callback_data="zakaz_done")
-        msg_markup.add(order_btn)
         if message.from_user.id in user_orders:    # если человек нажимал что заказать, то сообщение что он заказал
             print(message)
             await bot.send_message(   
                 message.chat.id,
                 f"Ваш заказ \n\n{await display_zakaz(message.from_user.id)}",
-                reply_markup=msg_markup
+                reply_markup=button.msg_markup
                 )
         else:
             await bot.send_message(
